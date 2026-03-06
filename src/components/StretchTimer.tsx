@@ -243,6 +243,18 @@ export function StretchTimer({ routine, onComplete, onBack }: StretchTimerProps)
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Warn user before refreshing/closing during an active session
+useEffect(() => {
+  const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    if (isPlaying || totalActiveTime > 0) {
+      e.preventDefault();
+      e.returnValue = ''; // Required for Chrome to show the dialog
+    }
+  };
+
+  window.addEventListener('beforeunload', handleBeforeUnload);
+  return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+}, [isPlaying, totalActiveTime]);
   const formatElapsedDisplay = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;

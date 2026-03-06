@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Check, Download, RotateCcw, ThumbsUp, Minus, AlertCircle, TrendingDown, Calendar, CalendarX } from 'lucide-react';
 import { Stretch, BodyFeelRating, SessionFeedback, BodySelection, BodyRegion } from '@/types/recovery';
 import { cn } from '@/lib/utils';
 import { generateSessionPDF } from '@/lib/generateSessionPDF';
+import { useState, useMemo, useEffect } from 'react';
 
 interface PostSessionFeedbackProps {
   totalActiveTime: number;
@@ -132,6 +132,20 @@ export function PostSessionFeedback({
   const [addedToCalendar, setAddedToCalendar] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
 
+  // Warn user before refreshing during questionnaire
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!feedbackSubmitted) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+  window.addEventListener('beforeunload', handleBeforeUnload);
+  return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+}, [feedbackSubmitted]);
+
+const minutes = Math.floor(totalActiveTime / 60);
   const minutes = Math.floor(totalActiveTime / 60);
   const seconds = totalActiveTime % 60;
   const timeDisplay = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
