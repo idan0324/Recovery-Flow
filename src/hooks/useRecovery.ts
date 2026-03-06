@@ -323,58 +323,75 @@ export function useRecovery() {
 
   const MIN_SESSION_TIME = 5 * 60; // 5 minutes in seconds
 
-  const completeSessionWithFeedback = (feedback: SessionFeedback) => {
-    // Use local date to avoid timezone issues (toISOString uses UTC)
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const yesterdayDate = new Date(now);
-    yesterdayDate.setDate(now.getDate() - 1);
-    const yesterday = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
+// Helper to get ISO week string (e.g. "2026-W10") for a given date, week starts Monday
+const getWeekString = (date: Date): string => {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7; // Mon=1, Sun=7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum); // shift to Thursday of ISO week
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-W${weekNo.toString().padStart(2, '0')}`;
+};
 
-    const shouldAddToCalendar = feedback.totalActiveTime >= MIN_SESSION_TIME;
+// Helper to get the previous week string
+const getPreviousWeekString = (weekStr: string): string => {
+  const [year, week] = weekStr.split('-W').map(Number);
+  const date = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7));
+  date.setUTCDate(date.getUTCDate() - 7);
+  return getWeekString(date);
+};
 
-    setProfile(prev => {
-      const completedDates = prev.completedDates || [];
-      const completedSessions = prev.completedSessions || [];
-      
-      // Create session record with feedback
-      const sessionRecord: CompletedSession = {
-        date: today,
-        feedback,
-      };
+const completeSessionWithFeedback = (feedback: SessionFeedback) => {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const thisWeek = getWeekString(now);
+  const lastWeek = getPreviousWeekString(thisWeek);
 
-      if (!shouldAddToCalendar) {
-        // Session too short - just record the feedback but don't add to calendar/streaks
-        return {
-          ...prev,
-          completedSessions: [...completedSessions, sessionRecord],
-        };
-      }
+  const shouldAddToCalendar = feedback.totalActiveTime >= MIN_SESSION_TIME;
 
-      const isConsecutive = prev.lastSessionDate === yesterday;
-      const isToday = prev.lastSessionDate === today;
+  setProfile(prev => {
+    const completedDates = prev.completedDates || [];
+    const completedSessions = prev.completedSessions || [];
 
-      const newStreak = isToday
-        ? prev.currentStreak
-        : isConsecutive
-        ? prev.currentStreak + 1
-        : 1;
-      
-      const newLongestStreak = Math.max(prev.longestStreak || 0, newStreak);
+    const sessionRecord: CompletedSession = { date: today, feedback };
 
+    if (!shouldAddToCalendar) {
       return {
         ...prev,
-        totalSessions: isToday ? prev.totalSessions : prev.totalSessions + 1,
-        currentStreak: newStreak,
-        longestStreak: newLongestStreak,
-        lastSessionDate: today,
-        completedDates: isToday || completedDates.includes(today) 
-          ? completedDates 
-          : [...completedDates, today],
         completedSessions: [...completedSessions, sessionRecord],
       };
-    });
-  };
+    }
+
+    const alreadySessionThisWeek = completedDates.some(
+      date => getWeekString(new Date(date + 'T12:00:00')) === thisWeek
+    );
+
+    // Streak logic: did they complete a session last week?
+    const completedLastWeek = completedDates.some(
+      date => getWeekString(new Date(date + 'T12:00:00')) === lastWeek
+    );
+
+    const newStreak = alreadySessionThisWeek
+      ? prev.currentStreak // already got credit this week, no change
+      : completedLastWeek
+      ? prev.currentStreak + 1 // kept it going from last week
+      : 1; // streak broken, restart
+
+    const newLongestStreak = Math.max(prev.longestStreak || 0, newStreak);
+
+    return {
+      ...prev,
+      totalSessions: alreadySessionThisWeek ? prev.totalSessions : prev.totalSessions + 1,
+      currentStreak: newStreak,
+      longestStreak: newLongestStreak,
+      lastSessionDate: today,
+      completedDates: completedDates.includes(today)
+        ? completedDates
+        : [...completedDates, today],
+      completedSessions: [...completedSessions, sessionRecord],
+    };
+  });
+};
 
   // Legacy function for backwards compatibility (still used by StretchTimer/StretchChecklist internally)
   const completeSession = () => {
@@ -383,19 +400,12 @@ export function useRecovery() {
   };
 
   const dismissWeeklySummary = () => {
-    const now = new Date();
-    const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-    const currentWeek = `${d.getUTCFullYear()}-W${weekNo.toString().padStart(2, '0')}`;
-    
-    setProfile(prev => ({
-      ...prev,
-      lastWeeklySummaryShown: currentWeek,
-    }));
-  };
+  const currentWeek = getWeekString(new Date());
+  setProfile(prev => ({
+    ...prev,
+    lastWeeklySummaryShown: currentWeek,
+  }));
+};
 
   const resetProfile = () => {
     setProfile(defaultProfile);
