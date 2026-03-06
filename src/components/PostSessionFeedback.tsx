@@ -145,7 +145,6 @@ export function PostSessionFeedback({
   return () => window.removeEventListener('beforeunload', handleBeforeUnload);
 }, [feedbackSubmitted]);
 
-const minutes = Math.floor(totalActiveTime / 60);
   const minutes = Math.floor(totalActiveTime / 60);
   const seconds = totalActiveTime % 60;
   const timeDisplay = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
